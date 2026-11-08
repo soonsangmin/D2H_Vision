@@ -133,29 +133,22 @@ jobs:
           mkdir -p config
           printf 'strash\nmap\n' > config/v118_abc_quick.script
 
-          # ORFS 26Q4 introduced synth_memory_max_bits in memories/max_bits.tcl.
-          # The project overrides ORFS synth_preamble.tcl with a custom
-          # preamble, so explicitly source that helper in the override.
-          python3 - <<'PY_PATCH'
+          # The pinned ORFS commit uses mem_dump.py from synth.tcl to enforce
+          # SYNTH_MEMORY_MAX_BITS. It does NOT ship memories/max_bits.tcl or a
+          # synth_memory_max_bits Tcl procedure. Remove the stale line if a
+          # previous manual patch added it.
+          python3 - <<'PY_CLEAN'
           from pathlib import Path
           p = Path("config/v118_synth_preamble.tcl")
-          s = p.read_text()
-          marker = "source $::env(SCRIPTS_DIR)/util.tcl\n"
-          required = "source $::env(SCRIPTS_DIR)/memories/max_bits.tcl"
-          if required not in s:
-              if marker not in s:
-                  raise SystemExit("[FAIL] Cannot find util.tcl source line in custom synthesis preamble")
-              s = s.replace(
-                  marker,
-                  marker + "# ORFS 26Q4 compatibility: provide SYNTH_MEMORY_MAX_BITS checker\n" + required + "\n",
-                  1,
-              )
-              p.write_text(s)
-              print("[PATCH] Loaded ORFS memories/max_bits.tcl from custom synthesis preamble")
+          lines = p.read_text().splitlines()
+          stale = "source $::env(SCRIPTS_DIR)/memories/max_bits.tcl"
+          kept = [line for line in lines if line.strip() != stale]
+          if len(kept) != len(lines):
+              p.write_text("\n".join(kept) + "\n")
+              print("[FIX] Removed unsupported memories/max_bits.tcl source from custom preamble")
           else:
-              print("[OK] ORFS max_bits Tcl helper is already sourced")
-          assert required in p.read_text()
-          PY_PATCH
+              print("[OK] Custom preamble has no unsupported max_bits Tcl source")
+          PY_CLEAN
 
           # V1.18's original runner used a WSL/Windows-specific /mnt/d path.
           # Replace it with the temporary directory provided by GitHub Actions.
@@ -272,9 +265,20 @@ jobs:
         run: |
           set -euo pipefail
           docker pull "$ORFS_IMAGE"
-          docker run --rm --entrypoint bash "$ORFS_IMAGE" -lc \
-            "test -s /OpenROAD-flow-scripts/flow/scripts/memories/max_bits.tcl && grep -q 'proc synth_memory_max_bits' /OpenROAD-flow-scripts/flow/scripts/memories/max_bits.tcl"
-          echo "[ORFS] Verified synth_memory_max_bits helper in $ORFS_IMAGE"
+          docker run --rm --entrypoint bash "$ORFS_IMAGE" -lc '\
+            set -euo pipefail; \
+            root=/OpenROAD-flow-scripts; \
+            for f in "$root/env.sh" "$root/flow/Makefile" "$root/flow/scripts/synth.tcl" "$root/flow/scripts/mem_dump.py"; do \
+              test -s "$f" || { echo "[FAIL] Missing expected ORFS file: $f"; exit 1; }; \
+              echo "[ORFS] OK $f"; \
+            done; \
+            grep -n "mem_dump.py" "$root/flow/scripts/synth.tcl" | head -n 3; \
+            if grep -R -n "synth_memory_max_bits" "$root/flow/scripts" >/tmp/orfs-helper-search.txt 2>/dev/null; then \
+              echo "[ORFS] Found legacy/custom Tcl helper reference:"; cat /tmp/orfs-helper-search.txt; \
+            else \
+              echo "[ORFS] No synth_memory_max_bits Tcl procedure in this revision; memory limit is enforced through mem_dump.py."; \
+            fi'
+          echo "[ORFS] Verified standard Yosys memory-check flow in $ORFS_IMAGE"
 
       - name: Select flow mode
         id: mode
