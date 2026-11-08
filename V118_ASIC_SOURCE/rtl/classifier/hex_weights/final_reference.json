@@ -1,0 +1,31 @@
+{
+  "status": "LOCKED",
+  "calibration_percentile": 99.95,
+  "input": {
+    "representation": "U8",
+    "range": [
+      0,
+      255
+    ],
+    "scale": 0.00392156862745098
+  },
+  "stem": {
+    "input": "U8",
+    "output": "S8",
+    "gray_multiplier": 19077462,
+    "sobel_multiplier": 5444336
+  },
+  "gap": {
+    "scale": 0.05295996833593,
+    "multiplier": 1915709605,
+    "multiplier_hex": "722F68A5"
+  },
+  "accuracy": {
+    "total": 2402,
+    "fp32_correct": 2181,
+    "quant_correct": 2157,
+    "fp32_accuracy": 90.7993,
+    "quant_accuracy": 89.8002,
+    "delta": -0.9992
+  }
+}

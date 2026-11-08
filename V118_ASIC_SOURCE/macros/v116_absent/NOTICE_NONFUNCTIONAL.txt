@@ -1,0 +1,1 @@
+NO MEMORY STORAGE. LEF/LIB/GDS are geometry/timing placeholders only. GDS must never be submitted to a foundry. Use them exclusively for physical trials of non-memory compute/control logic.

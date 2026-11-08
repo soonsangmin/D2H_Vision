@@ -1,0 +1,90 @@
+library (v116_memory_absent) {
+ delay_model : table_lookup;
+ time_unit : "1ns";
+ voltage_unit : "1V";
+ current_unit : "1mA";
+ capacitive_load_unit (1, pf);
+ leakage_power_unit : "1nW";
+ default_max_transition : 100;
+ type (v116_bus12) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 12;
+  bit_from : 11;
+  bit_to : 0;
+ }
+ type (v116_bus13) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 13;
+  bit_from : 12;
+  bit_to : 0;
+ }
+ type (v116_bus24) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 24;
+  bit_from : 23;
+  bit_to : 0;
+ }
+ type (v116_bus96) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 96;
+  bit_from : 95;
+  bit_to : 0;
+ }
+ cell (v116_MISSING_WEIGHT_ROM) {
+   area : 28800.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (EN) { direction : input; capacitance : 0.002; }
+   pin (KIND) { direction : input; capacitance : 0.002; }
+   bus (ADDR) {
+     bus_type : v116_bus13;
+     direction : input;
+     capacitance : 0.002;
+     pin (ADDR[12:0]) { }
+   }
+   bus (DATA) {
+     bus_type : v116_bus96;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (DATA[95:0]) { }
+   }
+ }
+ cell (v116_MISSING_PIXEL_FIFO_RAM) {
+   area : 11000.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (WCLK) { direction : input; capacitance : 0.002; }
+   pin (WEN) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v116_bus12;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[11:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v116_bus24;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[23:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v116_bus12;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[11:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v116_bus24;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[23:0]) { }
+   }
+ }
+}

@@ -1,0 +1,21 @@
+# V1.04 release checklist — scoped claims
+
+- [x] 6 FIFO payloads addressed as 8-bit data, linear byte addresses (V1.03 audit)
+- [x] Default full-depth inferred RTL RAM preserved
+- [x] Explicit compile-time macro mode `ASIC_USE_SKY130_SRAM`
+- [x] Byte write mask and 4-lane 32-bit word conversion
+- [x] 52 SRAM bank instances from six FIFO shapes
+- [x] Byte hold circuitry for inactive read cycles
+- [x] Same-word concurrent R/W check in simulation
+- [x] Strict physical view presence/format guard
+- [x] Macro-only ORFS configuration and one-cell probe (not full AI chip)
+- [x] Static bank address uniqueness across all six geometries
+- [ ] V1.04 Icarus RTL unit tests on WSL (user action)
+- [ ] Original OpenRAM behavioral model timing-compatible regression
+- [ ] Validated matching user-supplied real LEF, Liberty, GDS
+- [ ] Verified macro probe ORFS synthesis and OpenROAD linking
+- [ ] Macro physical placement/PDN/STA/DRC/LVS
+- [ ] Remaining inferred memories mapped (CNN line buffers, residuals, HandSeg buffers)
+- [ ] CNN weights DRAM prefetch or suitable hard ROM/RAM
+- [ ] Full HandSeg+CNN bit-exact equivalence with FPGA V6.23
+- [ ] Entire chip physical implementation and signoff

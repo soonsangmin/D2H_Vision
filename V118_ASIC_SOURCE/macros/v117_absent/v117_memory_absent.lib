@@ -1,0 +1,218 @@
+library (v117_memory_absent) {
+ delay_model : "table_lookup";
+ time_unit : "1ns";
+ voltage_unit : "1V";
+ current_unit : "1mA";
+ capacitive_load_unit (1, pf);
+ leakage_power_unit : "1nW";
+ default_max_transition : 100;
+ type (v117_bus8) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 8;
+  bit_from : 7;
+  bit_to : 0;
+ }
+ type (v117_bus10) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 10;
+  bit_from : 9;
+  bit_to : 0;
+ }
+ type (v117_bus16) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 16;
+  bit_from : 15;
+  bit_to : 0;
+ }
+ type (v117_bus192) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 192;
+  bit_from : 191;
+  bit_to : 0;
+ }
+ type (v117_bus256) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 256;
+  bit_from : 255;
+  bit_to : 0;
+ }
+ type (v117_bus512) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 512;
+  bit_from : 511;
+  bit_to : 0;
+ }
+ type (v117_bus1024) {
+  base_type : array;
+  data_type : bit;
+  bit_width : 1024;
+  bit_from : 1023;
+  bit_to : 0;
+ }
+ cell (v117_MISSING_ROW_RAM) {
+   area : 24000.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (WE) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v117_bus16;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[15:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v117_bus8;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[7:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v117_bus16;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[15:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v117_bus8;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[7:0]) { }
+   }
+ }
+ cell (v117_MISSING_VECTOR_RAM192) {
+   area : 53360.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (WE) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[9:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v117_bus192;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[191:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[9:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v117_bus192;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[191:0]) { }
+   }
+ }
+ cell (v117_MISSING_VECTOR_RAM256) {
+   area : 68720.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (WE) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[9:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v117_bus256;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[255:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[9:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v117_bus256;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[255:0]) { }
+   }
+ }
+ cell (v117_MISSING_VECTOR_RAM512) {
+   area : 130160.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (WE) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[9:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v117_bus512;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[511:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[9:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v117_bus512;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[511:0]) { }
+   }
+ }
+ cell (v117_MISSING_VECTOR_RAM1024) {
+   area : 253040.00;
+   is_macro_cell : true;
+   pg_pin (vccd1) { voltage_name : "VDD"; pg_type : primary_power; }
+   pg_pin (vssd1) { voltage_name : "VSS"; pg_type : primary_ground; }
+   pin (CLK) { direction : input; capacitance : 0.002; }
+   pin (WE) { direction : input; capacitance : 0.002; }
+   bus (WADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (WADDR[9:0]) { }
+   }
+   bus (WDATA) {
+     bus_type : v117_bus1024;
+     direction : input;
+     capacitance : 0.002;
+     pin (WDATA[1023:0]) { }
+   }
+   bus (RADDR) {
+     bus_type : v117_bus10;
+     direction : input;
+     capacitance : 0.002;
+     pin (RADDR[9:0]) { }
+   }
+   bus (RDATA) {
+     bus_type : v117_bus1024;
+     direction : output;
+     max_capacitance : 0.3;
+     pin (RDATA[1023:0]) { }
+   }
+ }
+}

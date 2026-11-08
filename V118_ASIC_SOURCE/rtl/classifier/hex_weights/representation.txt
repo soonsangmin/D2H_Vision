@@ -1,0 +1,33 @@
+FINAL MOBILEV2-LITE REPRESENTATION
+==================================
+
+INPUT
+  Gray  : U8 0..255
+  Sobel : U8 0..255
+  Scale : 3.921568627450980e-03
+
+STEM
+  Input  : U8
+  Weight : S8
+  Acc    : signed MAC
+  Output : S8
+  Actual : 0..127 due ReLU6
+
+BLOCKS
+  EXP    : S8 storage, 0..127 after ReLU6
+  DW     : S8 storage, 0..127 after ReLU6
+  PROJ   : S8
+  RES    : signed S8
+  OUT    : signed S8
+
+HEAD
+  S8
+
+GAP
+  S8
+  Scale : 5.295996833593000e-02
+
+FC
+  Weight : S8
+  Bias   : S32
+  Acc    : INT64
