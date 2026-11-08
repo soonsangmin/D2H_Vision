@@ -115,6 +115,14 @@ jobs:
           nproc
           echo "=== MEMORY ==="
           free -h
+          mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
+          echo "[RUNNER] MemTotal=${mem_kib} KiB"
+          if (( mem_kib < 14 * 1024 * 1024 )); then
+            echo "[FAIL] This ASIC synthesis needs a runner with at least 14 GiB RAM."
+            echo "[INFO] Public ubuntu-24.04 runners provide 16 GB; standard private-repo runners provide 8 GB."
+            exit 1
+          fi
+          echo "[RUNNER] Memory preflight PASS (>=14 GiB)"
           echo "=== DISK ==="
           df -h . "$RUNNER_TEMP"
           echo "=== DOCKER ==="
@@ -194,6 +202,37 @@ jobs:
           grep -q 'export ABC_SCRIPT := /workspace/config/v118_abc_quick.script' config/config_v117_nearfull_compute.mk
           grep -q 'strash' config/v118_abc_quick.script
           grep -q '^map$' config/v118_abc_quick.script
+
+          # The original V1.17 runner capped OpenROAD containers at 6 GiB
+          # (and the ODB audit at 3 GiB). The current synth_odb link_design
+          # reached 6,327,128 KB and failed. Raise both caps on a 16 GB runner.
+          python3 - <<'PY_MEM'
+          from pathlib import Path
+          p = Path("scripts/run_v117_nearfull_gds.sh")
+          s = p.read_text()
+          s = s.replace("--memory=6g", "--memory=12g")
+          s = s.replace("--memory=3g", "--memory=12g")
+          if s.count("--memory=12g") != 2:
+              raise SystemExit("[FAIL] Expected both OpenROAD memory limits to be raised to 12 GiB")
+          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=12g --name",
+                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=12g --name")
+          if "docker run --memory=12g --name" not in s:
+              raise SystemExit("[FAIL] Could not preserve stage container for OOM diagnostics")
+          marker = ' wait "$pid" || rc=$?\n trap - INT TERM\n'
+          insert = (' wait "$pid" || rc=$?\n'
+                    ' if docker inspect "$name" >/dev/null 2>&1; then\n'
+                      '  docker inspect --format "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}}" "$name" || true\n'
+                    '  docker rm -f "$name" >/dev/null 2>&1 || true\n'
+                    ' fi\n'
+                    ' trap - INT TERM\n')
+          if marker in s:
+              s = s.replace(marker, insert, 1)
+          elif "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}}" not in s:
+              raise SystemExit("[FAIL] Could not add OOM diagnostics after stage execution")
+          p.write_text(s)
+          print("[PATCH] OpenROAD container memory: stage/audit=12 GiB")
+          print("[PATCH] Stage container OOMKilled/exit status diagnostics enabled")
+          PY_MEM
 
       - name: Restore sv2v v0.0.13 and Stack build cache
         uses: actions/cache@v4
