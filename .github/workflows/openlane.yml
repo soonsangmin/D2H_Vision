@@ -203,9 +203,41 @@ jobs:
           grep -q 'strash' config/v118_abc_quick.script
           grep -q '^map$' config/v118_abc_quick.script
 
+          # This design has millions of instances and hundreds of thousands of
+          # reported setup endpoints. Do not run aggressive pre-placement timing
+          # repair during floorplan; keep timing analysis/reporting enabled.
+          python3 - <<'PY_FP'
+          from pathlib import Path
+          p = Path("config/config_v117_nearfull_compute.mk")
+          lines = p.read_text().splitlines()
+          lines = [line for line in lines if not line.strip().startswith("export SKIP_FLOORPLAN_REPAIR_TIMING")]
+          lines.append("export SKIP_FLOORPLAN_REPAIR_TIMING := 1")
+          p.write_text("\n".join(lines) + "\n")
+          print("[PATCH] SKIP_FLOORPLAN_REPAIR_TIMING=1 (skip early repair; keep STA metrics)")
+          PY_FP
+
+          # The previous 15-minute floorplan timeout caused make to receive
+          # SIGTERM, followed by SIGKILL after the 90-second grace period.
+          # Give floorplan and final physical implementation realistic limits.
+          python3 - <<'PY_TIMEOUT'
+          from pathlib import Path
+          p = Path("scripts/run_v117_nearfull_gds.sh")
+          s = p.read_text()
+          old = 'case "$stage" in floorplan) limit_sec=900;; finish) limit_sec=1800;; esac'
+          new = 'case "$stage" in floorplan) limit_sec=3600;; finish) limit_sec=5400;; esac'
+          if old in s:
+              s = s.replace(old, new, 1)
+          elif new not in s:
+              raise SystemExit("[FAIL] Could not identify floorplan/finish timeout settings")
+          p.write_text(s)
+          print("[PATCH] Stage timeout: floorplan=3600s, finish=5400s")
+          PY_TIMEOUT
+          grep -q '^export SKIP_FLOORPLAN_REPAIR_TIMING := 1$' config/config_v117_nearfull_compute.mk
+          grep -q 'floorplan) limit_sec=3600;; finish) limit_sec=5400;;' scripts/run_v117_nearfull_gds.sh
+
           # The original V1.17 runner capped OpenROAD containers at 6 GiB
-          # (and the ODB audit at 3 GiB). The current synth_odb link_design
-          # reached 6,327,128 KB and failed. Raise both caps on a 16 GB runner.
+          # (and the ODB audit at 3 GiB). The previous synth_odb link_design
+          # reached 6,327,128 KB and failed under the 6 GiB cap. Raise both caps on a 16 GB runner.
           python3 - <<'PY_MEM'
           from pathlib import Path
           p = Path("scripts/run_v117_nearfull_gds.sh")
