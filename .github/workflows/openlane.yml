@@ -159,6 +159,71 @@ jobs:
           grep -q 'strash' config/v118_abc_quick.script
           grep -q '^map$' config/v118_abc_quick.script
 
+      - name: Restore sv2v v0.0.13 and Stack build cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ steps.locate.outputs.project_dir }}/.tools/sv2v/v0.0.13/sv2v
+            ~/.stack
+          key: ubuntu-24.04-sv2v-v0.0.13-stack-2.15.5
+
+      - name: Try cached or official sv2v v0.0.13 binary
+        id: sv2v_prebuilt
+        continue-on-error: true
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cached=".tools/sv2v/v0.0.13/sv2v"
+          if [[ -x "$cached" ]]; then
+            echo "[CACHE] Reusing $cached"
+            "$cached" --version
+          else
+            # The upstream release asset may temporarily return HTTP 502/504.
+            # This step is allowed to fail; the next steps build the same pinned
+            # sv2v tag from source instead of aborting the ASIC job.
+            python3 scripts/v111_install_sv2v.py
+            test -x "$cached"
+            "$cached" --version
+          fi
+
+      - name: Setup Stack for sv2v source-build fallback
+        if: steps.sv2v_prebuilt.outcome == 'failure'
+        uses: haskell-actions/setup@v2.12.1
+        with:
+          enable-stack: true
+          stack-version: '2.15.5'
+          stack-no-global: true
+
+      - name: Build pinned sv2v v0.0.13 from upstream source
+        if: steps.sv2v_prebuilt.outcome == 'failure'
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          src="$RUNNER_TEMP/sv2v-v0.0.13-src"
+          rm -rf "$src"
+          echo "[INFO] Cloning exact upstream sv2v tag v0.0.13"
+          git clone --depth 1 --branch v0.0.13 \
+            https://github.com/zachjs/sv2v.git "$src"
+          echo "[INFO] Building sv2v with upstream Stack/Makefile"
+          make -C "$src" sv2v
+          install -D -m 0755 "$src/bin/sv2v" .tools/sv2v/v0.0.13/sv2v
+          .tools/sv2v/v0.0.13/sv2v --version
+          echo "[OK] Built pinned sv2v into .tools/sv2v/v0.0.13/sv2v"
+
+      - name: Verify SKY130HD target and sv2v frontend
+        working-directory: ${{ steps.locate.outputs.project_dir }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -x .tools/sv2v/v0.0.13/sv2v
+          .tools/sv2v/v0.0.13/sv2v --version
+          grep -Eq '^export PLATFORM[[:space:]]*=[[:space:]]*sky130hd([[:space:]]|$)' config/config.mk
+          grep -q 'include /workspace/config/config_v116_nearfull_compute.mk' config/config_v117_nearfull_compute.mk
+          echo '[PDK] Confirmed PLATFORM=sky130hd (SkyWater SKY130HD)'
+          echo '[FRONTEND] sv2v v0.0.13 ready'
+
       - name: Pull OpenROAD Flow Scripts image
         shell: bash
         run: |
@@ -194,6 +259,7 @@ jobs:
           status="output/v117_nearfull/status.txt"
           {
             echo "## V1.18 ASIC Flow"
+            echo "**Target PDK:** SkyWater SKY130HD (ORFS platform: \`sky130hd\`)"
             if [[ -s "$status" ]]; then
               echo "**Status:** \`$(cat "$status")\`"
             else
