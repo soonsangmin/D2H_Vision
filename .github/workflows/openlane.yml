@@ -1,73 +1,165 @@
-name: OpenLane ASIC Flow
+name: V1.18 ASIC Physical Flow
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "ASIC flow stage to run"
+        required: true
+        type: choice
+        default: synth
+        options:
+          - synth
+          - gds
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v118-asic-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  build_gds:
-    runs-on: ubuntu-22.04
-    
+  asic-flow:
+    # Pin Ubuntu 24.04 to avoid an unplanned OS-image change.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     env:
-      PDK_ROOT: ${{ github.workspace }}/pdk
-      PDK: sky130A
-      STD_CELL_LIBRARY: sky130_fd_sc_hd
+      # Change this to the relative path if the ASIC source is in a subfolder,
+      # for example: V118_ASIC_SOURCE
+      ASIC_PROJECT_DIR: .
 
     steps:
-      - name: Checkout Code
+      - name: Checkout repository
         uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-          update-environment: true
-        env:
-          ACTIONS_CACHE_URL: ${{ env.ACTIONS_CACHE_URL }}
-          ACTIONS_RUNTIME_TOKEN: ${{ env.ACTIONS_RUNTIME_TOKEN }}
+          fetch-depth: 1
 
-      - name: Cache PDK
-        id: cache-pdk
-        uses: actions/cache@v4
-        with:
-          path: ${{ github.workspace }}/pdk
-          key: pdk-${{ env.PDK }}-${{ hashFiles('**/config.json') }}
-          restore-keys: |
-            pdk-${{ env.PDK }}-
-
-      - name: Install Volare and Download PDK
-        if: steps.cache-pdk.outputs.cache-hit != 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Check project layout and runner resources
+        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          pip install volare
-          export PDK_ROOT=${{ github.workspace }}/pdk
-          # Truyền token trực tiếp vào volare để tránh lỗi không tìm thấy oauth token
-          volare enable --pdk sky130A --pdk-root ${{ github.workspace }}/pdk --token ${{ secrets.GITHUB_TOKEN }} 0da63c56d090d565651f893f1bc5211910bc49bf
+          set -euxo pipefail
+          test -s scripts/run_v117_nearfull_gds.sh
+          test -s scripts/v118_apply_fast_abc.py
+          test -s scripts/v117_report.py
+          test -s config/config_v117_nearfull_compute.mk
+          test -s config/v118_synth_preamble.tcl
+          test -s rtl/memory/v117_absent_memory_blackboxes.v
+          test -s macros/sky130_1k/sky130_sram_1kbyte_1rw1r_32x256_8.lef
+          test -s macros/sky130_1k/sky130_sram_1kbyte_1rw1r_32x256_8_TT_1p8V_25C.lib
+          test -s macros/sky130_1k/sky130_sram_1kbyte_1rw1r_32x256_8.gds
+          echo "=== CPU ==="
+          nproc
+          echo "=== MEMORY ==="
+          free -h
+          echo "=== DISK ==="
+          df -h . "$RUNNER_TEMP"
+          echo "=== DOCKER ==="
+          docker version
+          docker info
 
-      - name: Verify PDK Installation
+      - name: Prepare V1.18 for GitHub-hosted runner
+        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        shell: bash
         run: |
-          ls -l ${{ github.workspace }}/pdk/sky130A/libs.ref/sky130_fd_sc_hd
+          set -euo pipefail
 
-      - name: Run OpenLane Synthesis & Place-Route
+          # The uploaded V1.18 source archive references this ABC file,
+          # but the file was absent from the archive. Recreate the intended
+          # quick ABC mapping script (strash; map).
+          mkdir -p config
+          printf 'strash\nmap\n' > config/v118_abc_quick.script
+
+          # V1.18's original runner used a WSL/Windows-specific /mnt/d path.
+          # Replace it with the temporary directory provided by GitHub Actions.
+          mkdir -p "$RUNNER_TEMP/ASIC_WORK/V118/tmp"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+
+          runner = Path("scripts/run_v117_nearfull_gds.sh")
+          source = runner.read_text()
+          old = "/mnt/d/ASIC_WORK/V118/tmp"
+          new = os.path.join(os.environ["RUNNER_TEMP"], "ASIC_WORK/V118/tmp")
+          if old in source:
+              source = source.replace(old, new)
+              runner.write_text(source)
+              print(f"[PATCH] Docker TMP mount: {old} -> {new}")
+          elif new in source:
+              print("[OK] Docker TMP mount already points to RUNNER_TEMP")
+          else:
+              raise SystemExit("[FAIL] Could not identify the V1.18 temporary-directory mount")
+          PY
+
+          # Apply the source-provided V1.18 ABC/timeout patch and verify it.
+          python3 scripts/v118_apply_fast_abc.py
+          grep -q 'export ABC_SCRIPT := /workspace/config/v118_abc_quick.script' config/config_v117_nearfull_compute.mk
+          grep -q 'strash' config/v118_abc_quick.script
+          grep -q '^map$' config/v118_abc_quick.script
+
+      - name: Pull OpenROAD Flow Scripts image
+        shell: bash
         run: |
-          docker run --rm \
-            -v ${{ github.workspace }}:/work \
-            -v ${{ github.workspace }}/pdk:/build/pdk \
-            -v /dev/shm:/dev/shm \
-            -e PDK_ROOT=/build/pdk \
-            -e PDK=${{ env.PDK }} \
-            -e STD_CELL_LIBRARY=${{ env.STD_CELL_LIBRARY }} \
-            efabless/openlane:2023.11.23 \
-            flow.tcl -design /work/V118_ASIC_SOURCE/work
+          set -euo pipefail
+          docker pull openroad/orfs:latest
 
-      - name: Zip and Upload Results
+      - name: Select flow mode
+        id: mode
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            mode="${{ inputs.mode }}"
+          else
+            mode="synth"
+          fi
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "Selected ASIC flow mode: $mode"
+
+      - name: Run V1.18 ASIC flow
+        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        shell: bash
+        run: |
+          set -o pipefail
+          echo "[CI] Starting V1.18 flow: ${{ steps.mode.outputs.mode }}"
+          bash scripts/run_v117_nearfull_gds.sh "${{ steps.mode.outputs.mode }}"
+
+      - name: Add report to workflow summary
+        if: always()
+        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        shell: bash
+        run: |
+          report="output/v117_nearfull/BAO_CAO_V117.md"
+          status="output/v117_nearfull/status.txt"
+          {
+            echo "## V1.18 ASIC Flow"
+            if [[ -s "$status" ]]; then
+              echo "**Status:** \`$(cat "$status")\`"
+            else
+              echo "**Status:** no status file was generated"
+            fi
+            if [[ -s "$report" ]]; then
+              cat "$report"
+            else
+              echo "The detailed Markdown report was not generated. Check the uploaded logs."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload ASIC reports, logs, and physical outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: openlane-results
+          name: v118-asic-reports-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
-            runs/
-            V118_ASIC_SOURCE/work/runs/
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/status.txt
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/BAO_CAO_V117.md
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/*.log
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/reports/**
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/logs/**
+            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/results/**
+          if-no-files-found: warn
+          retention-days: 14
+          compression-level: 1
