@@ -1,4 +1,4 @@
-name: V1.18 ASIC Physical Flow (SKY130HD, GitHub 32GB runner)
+name: V1.18 ASIC Physical Flow (SKY130HD, GitHub-hosted public runner)
 
 on:
   push:
@@ -24,10 +24,10 @@ concurrency:
 
 jobs:
   asic-flow:
-    # Create a GitHub-hosted larger runner in an organization (Team/Enterprise):
-    # Linux x64, 8 vCPU / 32 GB RAM, runner name/label: sky130-32gb-linux.
-    runs-on:
-      labels: sky130-32gb-linux
+    # D2H_Vision is a PUBLIC repository. GitHub supplies a standard hosted
+    # Ubuntu VM automatically; no self-hosted runner or custom label is needed.
+    # Public standard runner: 4 vCPU / 16 GB RAM / 14 GB SSD.
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
       # Change this to the relative path if the ASIC source is in a subfolder,
@@ -93,7 +93,7 @@ jobs:
           echo "project_dir=$selected" >> "$GITHUB_OUTPUT"
           echo "[OK] ASIC source directory: $selected"
 
-      - name: Check project layout and 32GB GitHub larger-runner resources
+      - name: Check project layout and GitHub public standard-runner resources
         working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
@@ -119,24 +119,24 @@ jobs:
           free -h
           mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
           echo "[RUNNER] MemTotal=${mem_kib} KiB"
-          if (( $(nproc) < 8 )); then
-            echo "[FAIL] Expected the 8-vCPU GitHub larger runner; found $(nproc) CPU(s)."
+          if (( $(nproc) < 4 )); then
+            echo "[FAIL] Expected GitHub public standard runner with 4 vCPU; found $(nproc) CPU(s)."
             exit 1
           fi
-          if (( mem_kib < 27 * 1024 * 1024 )); then
-            echo "[FAIL] Expected a 32 GB-class GitHub larger runner (at least 27 GiB visible RAM)."
-            echo "[INFO] Standard ubuntu-24.04 runners have only 16 GB (public) or 8 GB (private)."
+          if (( mem_kib < 14 * 1024 * 1024 )); then
+            echo "[FAIL] Expected GitHub public standard runner with about 16 GB RAM (at least 14 GiB visible)."
+            echo "[INFO] Confirm the repository is Public and runs-on is ubuntu-24.04."
             exit 1
           fi
-          echo "[RUNNER] Memory preflight PASS (>=27 GiB visible; 32 GB class)"
-          echo "[RUNNER] CPU preflight PASS (>=8 vCPU)"
+          echo "[RUNNER] Memory preflight PASS (>=14 GiB visible; public 16 GB class)"
+          echo "[RUNNER] CPU preflight PASS (>=4 vCPU)"
           echo "=== DISK ==="
           df -h . "$RUNNER_TEMP"
           echo "=== DOCKER ==="
           docker version
           docker info
 
-      - name: Prepare V1.18 for GitHub-hosted 32GB runner
+      - name: Prepare V1.18 for GitHub-hosted public 16GB runner
         working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
@@ -242,26 +242,27 @@ jobs:
           grep -q '^export SKIP_FLOORPLAN_REPAIR_TIMING := 1$' config/config_v117_nearfull_compute.mk
           grep -q 'floorplan) limit_sec=3600;; finish) limit_sec=5400;;' scripts/run_v117_nearfull_gds.sh
 
-          # The previous 16 GB runner OOM-killed OpenROAD at ~13.01 GiB.
-          # The 32 GB GitHub larger runner has 8 vCPU / 32 GB RAM. Cap the
-          # OpenROAD stage container at 26 GB, leaving host memory for Linux,
-          # Docker and Actions. Keep OpenDB audit at 12 GB.
+          # Public standard GitHub runners provide 16 GB host RAM. The previous
+          # OpenROAD process peaked at ~13.01 GiB and was killed by a 13 GiB
+          # container cap. Give the main stage 14 GiB and the ODB audit 8 GiB.
+          # This remains tight on a 16 GB host; if host-level OOM persists, the
+          # RTL memory mapping must be reduced (do not set Docker above host RAM).
           python3 - <<'PY_MEM'
           from pathlib import Path
           p = Path("scripts/run_v117_nearfull_gds.sh")
           s = p.read_text()
-          s = s.replace("--memory=6g", "--memory=26g")
-          s = s.replace("--memory=3g", "--memory=12g")
-          if s.count("--memory=26g") != 1 or s.count("--memory=12g") != 1:
-              raise SystemExit("[FAIL] Expected stage=26 GB and ODB audit=12 GB limits")
-          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=26g --name",
-                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=26g --name")
-          if "docker run --memory=26g --name" not in s:
+          s = s.replace("--memory=6g", "--memory=14g")
+          s = s.replace("--memory=3g", "--memory=8g")
+          if s.count("--memory=14g") != 1 or s.count("--memory=8g") != 1:
+              raise SystemExit("[FAIL] Expected stage=14 GiB and ODB audit=8 GiB limits")
+          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=14g --name",
+                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=14g --name")
+          if "docker run --memory=14g --name" not in s:
               raise SystemExit("[FAIL] Could not preserve stage container for OOM diagnostics")
           marker = ' wait "$pid" || rc=$?\n trap - INT TERM\n'
           insert = (' wait "$pid" || rc=$?\n'
                     ' if docker inspect "$name" >/dev/null 2>&1; then\n'
-                      '  docker inspect --format "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}}" "$name" || true\n'
+                    '  docker inspect --format "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}} ExitCode={{.State.ExitCode}}" "$name" || true\n'
                     '  docker rm -f "$name" >/dev/null 2>&1 || true\n'
                     ' fi\n'
                     ' trap - INT TERM\n')
@@ -270,7 +271,7 @@ jobs:
           elif "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}}" not in s:
               raise SystemExit("[FAIL] Could not add OOM diagnostics after stage execution")
           p.write_text(s)
-          print("[PATCH] OpenROAD container memory: stage=26 GB, ODB audit=12 GB (32 GB host)")
+          print("[PATCH] OpenROAD container memory: stage=14 GiB, ODB audit=8 GiB (public 16 GB host)")
           print("[PATCH] Stage container OOMKilled/exit status diagnostics enabled")
           PY_MEM
 
@@ -280,7 +281,7 @@ jobs:
           path: |
             ${{ steps.locate.outputs.project_dir }}/.tools/sv2v/v0.0.13/sv2v
             ~/.stack
-          key: ubuntu-24.04-sv2v-v0.0.13-stack-2.15.5
+          key: ubuntu-24.04-public-sv2v-v0.0.13-stack-2.15.5
 
       - name: Try cached or official sv2v v0.0.13 binary
         id: sv2v_prebuilt
@@ -389,7 +390,7 @@ jobs:
           {
             echo "## V1.18 ASIC Flow"
             echo "**Target PDK:** SkyWater SKY130HD (ORFS platform: \`sky130hd\`)"
-            echo "**Runner:** GitHub-hosted larger runner, Linux x64, 8 vCPU / 32 GB RAM, label \`sky130-32gb-linux\`"
+            echo "**Runner:** GitHub-hosted standard public runner, Ubuntu 24.04, 4 vCPU / 16 GB RAM"
             if [[ -s "$status" ]]; then
               echo "**Status:** \`$(cat "$status")\`"
             else
