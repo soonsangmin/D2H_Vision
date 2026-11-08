@@ -117,12 +117,12 @@ jobs:
           free -h
           mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
           echo "[RUNNER] MemTotal=${mem_kib} KiB"
-          if (( mem_kib < 14 * 1024 * 1024 )); then
-            echo "[FAIL] This ASIC synthesis needs a runner with at least 14 GiB RAM."
-            echo "[INFO] Public ubuntu-24.04 runners provide 16 GB; standard private-repo runners provide 8 GB."
+          if (( mem_kib < 15 * 1024 * 1024 )); then
+            echo "[FAIL] This ASIC synthesis needs a runner with at least 15 GiB RAM (use the 16 GB public ubuntu-24.04 runner)."
+            echo "[INFO] Public ubuntu-24.04 runners provide 16 GB; standard private-repo runners provide 8 GB; use a public repo or larger runner for this flow."
             exit 1
           fi
-          echo "[RUNNER] Memory preflight PASS (>=14 GiB)"
+          echo "[RUNNER] Memory preflight PASS (>=15 GiB)"
           echo "=== DISK ==="
           df -h . "$RUNNER_TEMP"
           echo "=== DOCKER ==="
@@ -236,19 +236,20 @@ jobs:
           grep -q 'floorplan) limit_sec=3600;; finish) limit_sec=5400;;' scripts/run_v117_nearfull_gds.sh
 
           # The original V1.17 runner capped OpenROAD containers at 6 GiB
-          # (and the ODB audit at 3 GiB). The previous synth_odb link_design
-          # reached 6,327,128 KB and failed under the 6 GiB cap. Raise both caps on a 16 GB runner.
+          # (and the ODB audit at 3 GiB). Floorplan/PDN now peaks at 12,592,492 KB,
+          # essentially exhausting the 12 GiB cgroup limit. Raise the stage cap
+          # to 13 GiB on a 16 GB public runner; keep the separate ODB audit at 12 GiB.
           python3 - <<'PY_MEM'
           from pathlib import Path
           p = Path("scripts/run_v117_nearfull_gds.sh")
           s = p.read_text()
-          s = s.replace("--memory=6g", "--memory=12g")
+          s = s.replace("--memory=6g", "--memory=13g")
           s = s.replace("--memory=3g", "--memory=12g")
-          if s.count("--memory=12g") != 2:
-              raise SystemExit("[FAIL] Expected both OpenROAD memory limits to be raised to 12 GiB")
-          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=12g --name",
-                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=12g --name")
-          if "docker run --memory=12g --name" not in s:
+          if s.count("--memory=13g") != 1 or s.count("--memory=12g") != 1:
+              raise SystemExit("[FAIL] Expected stage=13 GiB and ODB audit=12 GiB limits")
+          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=13g --name",
+                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=13g --name")
+          if "docker run --memory=13g --name" not in s:
               raise SystemExit("[FAIL] Could not preserve stage container for OOM diagnostics")
           marker = ' wait "$pid" || rc=$?\n trap - INT TERM\n'
           insert = (' wait "$pid" || rc=$?\n'
@@ -262,7 +263,7 @@ jobs:
           elif "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}}" not in s:
               raise SystemExit("[FAIL] Could not add OOM diagnostics after stage execution")
           p.write_text(s)
-          print("[PATCH] OpenROAD container memory: stage/audit=12 GiB")
+          print("[PATCH] OpenROAD container memory: stage=13 GiB, ODB audit=12 GiB")
           print("[PATCH] Stage container OOMKilled/exit status diagnostics enabled")
           PY_MEM
 
