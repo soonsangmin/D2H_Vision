@@ -18,9 +18,8 @@ jobs:
           docker run --rm \
             -v ${{ github.workspace }}:/work \
             -v /dev/shm:/dev/shm \
-            -w /work \
             efabless/openlane:2023.11.23 \
-            bash -c "make asic_ai_top"
+            flow.tcl -design /work
             
       - name: Zip and Upload Results
         if: always()
