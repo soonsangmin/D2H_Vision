@@ -1,9 +1,15 @@
 {
-  "DESIGN_NAME": "counter",
-  "VERILOG_FILES": ["dir::src/counter.v"],
-  "CLOCK_PORT": "clk",
-  "CLOCK_PERIOD": 10,
-  "FP_CORE_UTIL": 40,
-  "pdk": "sky130A",
-  "STD_CELL_LIBRARY": "sky130_fd_sc_hd"
+    "DESIGN_NAME": "asic_ai_top",
+    "DESIGN_IS_CORE": true,
+    "VERILOG_FILES": [
+        "dir::../V118_ASIC_SOURCE/asic/asic_ai_top.sv",
+        "dir::../V118_ASIC_SOURCE/asic/asic_ai_onchip_top.sv",
+        "dir::../V118_ASIC_SOURCE/asic/*.sv"
+    ],
+    "CLOCK_PORT": "clk",
+    "CLOCK_PERIOD": 10.0,
+    "FP_SIZING": "relative",
+    "PL_TARGET_DENSITY": 0.60,
+    "VDD_NETS": ["vccd1"],
+    "GND_NETS": ["vssd1"]
 }
