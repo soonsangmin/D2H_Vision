@@ -1,4 +1,4 @@
-name: V1.18 ASIC Physical Flow (SKY130HD, 64GB runner)
+name: V1.18 ASIC Physical Flow (SKY130HD, GitHub 32GB runner)
 
 on:
   push:
@@ -24,8 +24,10 @@ concurrency:
 
 jobs:
   asic-flow:
-    # Requires a self-hosted Linux x64 runner with >=64 GB RAM and custom label asic-64gb.
-    runs-on: [self-hosted, linux, x64, asic-64gb]
+    # Create a GitHub-hosted larger runner in an organization (Team/Enterprise):
+    # Linux x64, 8 vCPU / 32 GB RAM, runner name/label: sky130-32gb-linux.
+    runs-on:
+      labels: sky130-32gb-linux
     timeout-minutes: 360
     env:
       # Change this to the relative path if the ASIC source is in a subfolder,
@@ -91,7 +93,7 @@ jobs:
           echo "project_dir=$selected" >> "$GITHUB_OUTPUT"
           echo "[OK] ASIC source directory: $selected"
 
-      - name: Check project layout and 64GB runner resources
+      - name: Check project layout and 32GB GitHub larger-runner resources
         working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
@@ -117,19 +119,24 @@ jobs:
           free -h
           mem_kib=$(awk '/^MemTotal:/ {print $2}' /proc/meminfo)
           echo "[RUNNER] MemTotal=${mem_kib} KiB"
-          if (( mem_kib < 60 * 1024 * 1024 )); then
-            echo "[FAIL] Full ASIC physical flow requires a self-hosted runner with at least 60 GiB visible RAM (64 GB class)."
-            echo "[INFO] Previous 16 GB runner OOM-killed OpenROAD at a 13 GiB container cap."
+          if (( $(nproc) < 8 )); then
+            echo "[FAIL] Expected the 8-vCPU GitHub larger runner; found $(nproc) CPU(s)."
             exit 1
           fi
-          echo "[RUNNER] Memory preflight PASS (>=60 GiB; 64 GB class)"
+          if (( mem_kib < 27 * 1024 * 1024 )); then
+            echo "[FAIL] Expected a 32 GB-class GitHub larger runner (at least 27 GiB visible RAM)."
+            echo "[INFO] Standard ubuntu-24.04 runners have only 16 GB (public) or 8 GB (private)."
+            exit 1
+          fi
+          echo "[RUNNER] Memory preflight PASS (>=27 GiB visible; 32 GB class)"
+          echo "[RUNNER] CPU preflight PASS (>=8 vCPU)"
           echo "=== DISK ==="
           df -h . "$RUNNER_TEMP"
           echo "=== DOCKER ==="
           docker version
           docker info
 
-      - name: Prepare V1.18 for 64GB self-hosted runner
+      - name: Prepare V1.18 for GitHub-hosted 32GB runner
         working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
@@ -235,21 +242,21 @@ jobs:
           grep -q '^export SKIP_FLOORPLAN_REPAIR_TIMING := 1$' config/config_v117_nearfull_compute.mk
           grep -q 'floorplan) limit_sec=3600;; finish) limit_sec=5400;;' scripts/run_v117_nearfull_gds.sh
 
-          # Docker confirmed OOMKilled=true on the standard runner: OpenROAD
-          # reached ~13.01 GiB with a 13 GiB cgroup cap. Use a 54 GiB stage cap
-          # on a 64 GB-class host, leaving RAM for Linux and the self-hosted runner.
-          # Keep the separate OpenDB audit cap at 24 GiB.
+          # The previous 16 GB runner OOM-killed OpenROAD at ~13.01 GiB.
+          # The 32 GB GitHub larger runner has 8 vCPU / 32 GB RAM. Cap the
+          # OpenROAD stage container at 26 GB, leaving host memory for Linux,
+          # Docker and Actions. Keep OpenDB audit at 12 GB.
           python3 - <<'PY_MEM'
           from pathlib import Path
           p = Path("scripts/run_v117_nearfull_gds.sh")
           s = p.read_text()
-          s = s.replace("--memory=6g", "--memory=54g")
-          s = s.replace("--memory=3g", "--memory=24g")
-          if s.count("--memory=54g") != 1 or s.count("--memory=24g") != 1:
-              raise SystemExit("[FAIL] Expected stage=54 GiB and ODB audit=24 GiB limits")
-          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=54g --name",
-                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=54g --name")
-          if "docker run --memory=54g --name" not in s:
+          s = s.replace("--memory=6g", "--memory=26g")
+          s = s.replace("--memory=3g", "--memory=12g")
+          if s.count("--memory=26g") != 1 or s.count("--memory=12g") != 1:
+              raise SystemExit("[FAIL] Expected stage=26 GB and ODB audit=12 GB limits")
+          s = s.replace("timeout -s TERM -k 90s \"$limit_sec\" docker run --rm --memory=26g --name",
+                        "timeout -s TERM -k 90s \"$limit_sec\" docker run --memory=26g --name")
+          if "docker run --memory=26g --name" not in s:
               raise SystemExit("[FAIL] Could not preserve stage container for OOM diagnostics")
           marker = ' wait "$pid" || rc=$?\n trap - INT TERM\n'
           insert = (' wait "$pid" || rc=$?\n'
@@ -263,7 +270,7 @@ jobs:
           elif "[DOCKER] Status={{.State.Status}} OOMKilled={{.State.OOMKilled}}" not in s:
               raise SystemExit("[FAIL] Could not add OOM diagnostics after stage execution")
           p.write_text(s)
-          print("[PATCH] OpenROAD container memory: stage=54 GiB, ODB audit=24 GiB")
+          print("[PATCH] OpenROAD container memory: stage=26 GB, ODB audit=12 GB (32 GB host)")
           print("[PATCH] Stage container OOMKilled/exit status diagnostics enabled")
           PY_MEM
 
@@ -382,7 +389,7 @@ jobs:
           {
             echo "## V1.18 ASIC Flow"
             echo "**Target PDK:** SkyWater SKY130HD (ORFS platform: \`sky130hd\`)"
-            echo "**Runner:** self-hosted Linux x64, label \`asic-64gb\`, >=60 GiB visible RAM"
+            echo "**Runner:** GitHub-hosted larger runner, Linux x64, 8 vCPU / 32 GB RAM, label \`sky130-32gb-linux\`"
             if [[ -s "$status" ]]; then
               echo "**Status:** \`$(cat "$status")\`"
             else
