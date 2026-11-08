@@ -30,7 +30,7 @@ jobs:
     env:
       # Change this to the relative path if the ASIC source is in a subfolder,
       # for example: V118_ASIC_SOURCE
-      ASIC_PROJECT_DIR: .
+      ASIC_PROJECT_DIR: V118_ASIC_SOURCE
 
     steps:
       - name: Checkout repository
@@ -38,11 +38,69 @@ jobs:
         with:
           fetch-depth: 1
 
+      - name: Locate ASIC source directory
+        id: locate
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested="${ASIC_PROJECT_DIR:-.}"
+          script_rel="scripts/run_v117_nearfull_gds.sh"
+
+          if [[ -s "$requested/$script_rel" ]]; then
+            selected="$requested"
+          else
+            mapfile -t found_scripts < <(find . -type f -path "*/$script_rel" -not -path './.git/*' -print | sort)
+            if [[ ${#found_scripts[@]} -eq 1 ]]; then
+              selected="${found_scripts[0]%/$script_rel}"
+            elif [[ ${#found_scripts[@]} -eq 0 ]]; then
+              # Also support committing the original source ZIP instead of
+              # extracting V118_ASIC_SOURCE into the repository beforehand.
+              mapfile -t source_archives < <(find . -maxdepth 4 -type f -iname 'V118_HandSeg_ASIC_SOURCE.zip' -not -path './.git/*' -print | sort)
+              if [[ ${#source_archives[@]} -eq 1 ]]; then
+                extract_root="$GITHUB_WORKSPACE/.ci_v118_source"
+                mkdir -p "$extract_root"
+                unzip -oq "${source_archives[0]}" -d "$extract_root"
+                if [[ -s "$extract_root/V118_ASIC_SOURCE/$script_rel" ]]; then
+                  selected="$extract_root/V118_ASIC_SOURCE"
+                else
+                  echo "[FAIL] Extracted source ZIP does not contain $script_rel"
+                  find "$extract_root" -maxdepth 6 -type f -name 'run_v117_nearfull_gds.sh' -print || true
+                  exit 1
+                fi
+              else
+                echo "[FAIL] Cannot find $script_rel in the checked-out repository."
+                echo "[INFO] Commit the extracted V118_ASIC_SOURCE folder, or add V118_HandSeg_ASIC_SOURCE.zip."
+                echo "[INFO] Expected ./scripts/... or ./V118_ASIC_SOURCE/scripts/..."
+                find . -maxdepth 5 -type f -name 'run_v117_nearfull_gds.sh' -print || true
+                exit 1
+              fi
+            else
+              printf '[FAIL] Multiple ASIC source trees found:\n'
+              printf '  %s\n' "${found_scripts[@]}"
+              echo "Set ASIC_PROJECT_DIR in this workflow to select one explicitly."
+              exit 1
+            fi
+          fi
+
+          # Keep the path relative to the checkout so later steps and
+          # artifact upload use one unambiguous location.
+          case "$selected" in
+            "$GITHUB_WORKSPACE"/*) selected="${selected#"$GITHUB_WORKSPACE"/}" ;;
+          esac
+          echo "project_dir=$selected" >> "$GITHUB_OUTPUT"
+          echo "[OK] ASIC source directory: $selected"
+
       - name: Check project layout and runner resources
-        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
           set -euxo pipefail
+          echo "=== SOURCE ROOT ==="
+          pwd
+          echo "=== SCRIPTS DIRECTORY ==="
+          ls -la scripts || true
+          echo "=== RUNNER SEARCH ==="
+          find "$GITHUB_WORKSPACE" -maxdepth 7 -type f -name 'run_v117_nearfull_gds.sh' -print || true
           test -s scripts/run_v117_nearfull_gds.sh
           test -s scripts/v118_apply_fast_abc.py
           test -s scripts/v117_report.py
@@ -63,7 +121,7 @@ jobs:
           docker info
 
       - name: Prepare V1.18 for GitHub-hosted runner
-        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
           set -euo pipefail
@@ -120,7 +178,7 @@ jobs:
           echo "Selected ASIC flow mode: $mode"
 
       - name: Run V1.18 ASIC flow
-        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
           set -o pipefail
@@ -129,7 +187,7 @@ jobs:
 
       - name: Add report to workflow summary
         if: always()
-        working-directory: ${{ env.ASIC_PROJECT_DIR }}
+        working-directory: ${{ steps.locate.outputs.project_dir }}
         shell: bash
         run: |
           report="output/v117_nearfull/BAO_CAO_V117.md"
@@ -154,12 +212,12 @@ jobs:
         with:
           name: v118-asic-reports-${{ github.run_number }}-${{ github.run_attempt }}
           path: |
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/status.txt
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/BAO_CAO_V117.md
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/*.log
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/reports/**
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/logs/**
-            ${{ env.ASIC_PROJECT_DIR }}/output/v117_nearfull/results/**
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/status.txt
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/BAO_CAO_V117.md
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/*.log
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/reports/**
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/logs/**
+            ${{ steps.locate.outputs.project_dir }}/output/v117_nearfull/results/**
           if-no-files-found: warn
           retention-days: 14
           compression-level: 1
