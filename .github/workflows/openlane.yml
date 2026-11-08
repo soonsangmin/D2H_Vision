@@ -20,7 +20,7 @@ jobs:
             -v /dev/shm:/dev/shm \
             -w /work \
             efabless/openlane:2023.11.23 \
-            bash -c "make fullchip"
+            bash -c "make asic_ai_top"
             
       - name: Zip and Upload Results
         if: always()
