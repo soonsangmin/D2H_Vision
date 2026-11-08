@@ -31,6 +31,7 @@ jobs:
       # Change this to the relative path if the ASIC source is in a subfolder,
       # for example: V118_ASIC_SOURCE
       ASIC_PROJECT_DIR: V118_ASIC_SOURCE
+      ORFS_IMAGE: openroad/orfs:26Q4-244-g202c7fccb
 
     steps:
       - name: Checkout repository
@@ -132,6 +133,30 @@ jobs:
           mkdir -p config
           printf 'strash\nmap\n' > config/v118_abc_quick.script
 
+          # ORFS 26Q4 introduced synth_memory_max_bits in memories/max_bits.tcl.
+          # The project overrides ORFS synth_preamble.tcl with a custom
+          # preamble, so explicitly source that helper in the override.
+          python3 - <<'PY_PATCH'
+          from pathlib import Path
+          p = Path("config/v118_synth_preamble.tcl")
+          s = p.read_text()
+          marker = "source $::env(SCRIPTS_DIR)/util.tcl\n"
+          required = "source $::env(SCRIPTS_DIR)/memories/max_bits.tcl"
+          if required not in s:
+              if marker not in s:
+                  raise SystemExit("[FAIL] Cannot find util.tcl source line in custom synthesis preamble")
+              s = s.replace(
+                  marker,
+                  marker + "# ORFS 26Q4 compatibility: provide SYNTH_MEMORY_MAX_BITS checker\n" + required + "\n",
+                  1,
+              )
+              p.write_text(s)
+              print("[PATCH] Loaded ORFS memories/max_bits.tcl from custom synthesis preamble")
+          else:
+              print("[OK] ORFS max_bits Tcl helper is already sourced")
+          assert required in p.read_text()
+          PY_PATCH
+
           # V1.18's original runner used a WSL/Windows-specific /mnt/d path.
           # Replace it with the temporary directory provided by GitHub Actions.
           mkdir -p "$RUNNER_TEMP/ASIC_WORK/V118/tmp"
@@ -152,6 +177,24 @@ jobs:
           else:
               raise SystemExit("[FAIL] Could not identify the V1.18 temporary-directory mount")
           PY
+
+          # Pin runner invocations to the same ORFS image used by this workflow.
+          python3 - <<'PY_IMAGE'
+          from pathlib import Path
+          import os
+          p = Path("scripts/run_v117_nearfull_gds.sh")
+          s = p.read_text()
+          old = "openroad/orfs:latest"
+          new = os.environ["ORFS_IMAGE"]
+          if old in s:
+              s = s.replace(old, new)
+              p.write_text(s)
+              print(f"[PATCH] ORFS image: {old} -> {new}")
+          elif new in s:
+              print(f"[OK] ORFS image already pinned: {new}")
+          else:
+              raise SystemExit("[FAIL] Could not identify ORFS image reference in runner")
+          PY_IMAGE
 
           # Apply the source-provided V1.18 ABC/timeout patch and verify it.
           python3 scripts/v118_apply_fast_abc.py
@@ -228,7 +271,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker pull openroad/orfs:latest
+          docker pull "$ORFS_IMAGE"
+          docker run --rm --entrypoint bash "$ORFS_IMAGE" -lc \
+            "test -s /OpenROAD-flow-scripts/flow/scripts/memories/max_bits.tcl && grep -q 'proc synth_memory_max_bits' /OpenROAD-flow-scripts/flow/scripts/memories/max_bits.tcl"
+          echo "[ORFS] Verified synth_memory_max_bits helper in $ORFS_IMAGE"
 
       - name: Select flow mode
         id: mode
