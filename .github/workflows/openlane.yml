@@ -8,21 +8,19 @@ on:
 jobs:
   build_gds:
     runs-on: ubuntu-22.04
-    # Khai báo chạy toàn bộ các bước bên trong Docker image gốc của OpenLane
-    container:
-      image: ghcr.io/efabless/openlane2:latest
-
+    
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # Bỏ qua bước Setup Python và cài đặt qua Pip
-      
-      - name: Run Full ASIC Flow
+      - name: Run Full ASIC Flow via Native Docker
         run: |
-          # Chạy lệnh gốc, KHÔNG sử dụng cờ --dockerized
-          # OpenLane sẽ tự động gọi volare để tải Sky130 PDK nếu chưa có
-          openlane config.json
+          docker run --rm \
+            -v ${{ github.workspace }}:/work \
+            -w /work \
+            -e PDK_ROOT=/work/pdk \
+            ghcr.io/efabless/openlane2:latest \
+            bash -c "openlane config.json; EXIT_CODE=\$?; chown -R $(id -u):$(id -g) /work; exit \$EXIT_CODE"
 
       - name: Zip and Upload Results
         if: always()
