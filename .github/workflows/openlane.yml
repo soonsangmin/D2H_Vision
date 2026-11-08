@@ -38,12 +38,14 @@ jobs:
 
       - name: Install Volare and Download PDK
         if: steps.cache-pdk.outputs.cache-hit != 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           python -m pip install --upgrade pip
           pip install volare
-          # Xuất biến môi trường và kích hoạt đúng phiên bản PDK tương thích với OpenLane 2023.11.23
           export PDK_ROOT=${{ github.workspace }}/pdk
-          volare enable --pdk sky130A --pdk-root ${{ github.workspace }}/pdk 0da63c56d090d565651f893f1bc5211910bc49bf
+          # Truyền token trực tiếp vào volare để tránh lỗi không tìm thấy oauth token
+          volare enable --pdk sky130A --pdk-root ${{ github.workspace }}/pdk --token ${{ secrets.GITHUB_TOKEN }} 0da63c56d090d565651f893f1bc5211910bc49bf
 
       - name: Verify PDK Installation
         run: |
