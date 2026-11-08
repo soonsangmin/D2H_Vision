@@ -1,5 +1,7 @@
 {
     "DESIGN_NAME": "asic_ai_top",
+    "PDK": "sky130A",
+    "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
     "DESIGN_IS_CORE": true,
     "VERILOG_FILES": [
         "dir::../V118_ASIC_SOURCE/asic/asic_ai_top.sv",
